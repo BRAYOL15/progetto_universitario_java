@@ -1,0 +1,169 @@
+package com.flightbooking.controller;
+
+import com.flightbooking.MainApp;
+import com.flightbooking.dao.UtenteDAO;
+import com.flightbooking.model.Utente;
+import com.flightbooking.util.SessionManager;
+import javafx.animation.FadeTransition;
+import javafx.fxml.FXML;
+import javafx.fxml.Initializable;
+import javafx.scene.control.*;
+import javafx.scene.layout.VBox;
+import javafx.util.Duration;
+
+import java.net.URL;
+import java.util.Optional;
+import java.util.ResourceBundle;
+
+/**
+ * Controller per la schermata di Login e Registrazione.
+ * Gestisce autenticazione e navigazione verso la dashboard.
+ */
+public class LoginController implements Initializable {
+
+    // ─── Pannello Login ──────────────────────────────────────────────────────
+    @FXML private VBox panelloLogin;
+    @FXML private TextField txtEmail;
+    @FXML private PasswordField txtPassword;
+    @FXML private Label lblErroreLogin;
+    @FXML private Button btnLogin;
+
+    // ─── Pannello Registrazione ──────────────────────────────────────────────
+    @FXML private VBox panelloRegistrazione;
+    @FXML private TextField txtRegNome;
+    @FXML private TextField txtRegCognome;
+    @FXML private TextField txtRegEmail;
+    @FXML private PasswordField txtRegPassword;
+    @FXML private PasswordField txtRegConfermaPassword;
+    @FXML private TextField txtRegTelefono;
+    @FXML private Label lblErroreReg;
+
+    private final UtenteDAO utenteDAO = new UtenteDAO();
+
+    @Override
+    public void initialize(URL location, ResourceBundle resources) {
+        panelloRegistrazione.setVisible(false);
+        panelloRegistrazione.setManaged(false);
+        lblErroreLogin.setVisible(false);
+        lblErroreReg.setVisible(false);
+
+        // Premi Invio per fare login
+        txtPassword.setOnAction(e -> handleLogin());
+    }
+
+    @FXML
+    private void handleLogin() {
+        String email = txtEmail.getText().trim();
+        String password = txtPassword.getText();
+
+        if (email.isEmpty() || password.isEmpty()) {
+            mostraErroreLogin("Inserisci email e password.");
+            return;
+        }
+
+        Optional<Utente> utente = utenteDAO.login(email, password);
+        if (utente.isPresent()) {
+            SessionManager.getInstance().setUtenteCorrente(utente.get());
+            if (utente.get().isAdmin()) {
+                MainApp.navigateTo("AdminDashboard.fxml", "Pannello Amministratore");
+            } else {
+                MainApp.navigateTo("Dashboard.fxml", "Dashboard");
+            }
+        } else {
+            mostraErroreLogin("Email o password non corretti.");
+            txtPassword.clear();
+        }
+    }
+
+    @FXML
+    private void handleRegistrazione() {
+        String nome = txtRegNome.getText().trim();
+        String cognome = txtRegCognome.getText().trim();
+        String email = txtRegEmail.getText().trim();
+        String password = txtRegPassword.getText();
+        String conferma = txtRegConfermaPassword.getText();
+        String telefono = txtRegTelefono.getText().trim();
+
+        // Validazioni
+        if (nome.isEmpty() || cognome.isEmpty() || email.isEmpty() || password.isEmpty()) {
+            mostraErroreReg("Compila tutti i campi obbligatori.");
+            return;
+        }
+        if (!email.matches("^[\\w.-]+@[\\w.-]+\\.[a-z]{2,6}$")) {
+            mostraErroreReg("Formato email non valido.");
+            return;
+        }
+        if (password.length() < 6) {
+            mostraErroreReg("La password deve essere di almeno 6 caratteri.");
+            return;
+        }
+        if (!password.equals(conferma)) {
+            mostraErroreReg("Le password non coincidono.");
+            return;
+        }
+        if (utenteDAO.emailEsiste(email)) {
+            mostraErroreReg("Questa email è già registrata.");
+            return;
+        }
+
+        Utente nuovoUtente = new Utente();
+        nuovoUtente.setNome(nome);
+        nuovoUtente.setCognome(cognome);
+        nuovoUtente.setEmail(email);
+        nuovoUtente.setPasswordHash(
+            com.flightbooking.util.PasswordUtil.hash(password)
+        );
+        nuovoUtente.setTelefono(telefono);
+        nuovoUtente.setRuolo("UTENTE");
+
+        if (utenteDAO.registra(nuovoUtente)) {
+            // Torna al login con messaggio di successo
+            mostraLogin();
+            txtEmail.setText(email);
+            lblErroreLogin.setStyle("-fx-text-fill: #27ae60;");
+            lblErroreLogin.setText("✓ Registrazione avvenuta! Ora puoi accedere.");
+            lblErroreLogin.setVisible(true);
+        } else {
+            mostraErroreReg("Errore durante la registrazione. Riprova.");
+        }
+    }
+
+    @FXML
+    private void mostraRegistrazione() {
+        animaTransizione(panelloLogin, panelloRegistrazione);
+    }
+
+    @FXML
+    private void mostraLogin() {
+        animaTransizione(panelloRegistrazione, panelloLogin);
+    }
+
+    private void animaTransizione(VBox da, VBox a) {
+        FadeTransition fadeOut = new FadeTransition(Duration.millis(200), da);
+        fadeOut.setFromValue(1.0);
+        fadeOut.setToValue(0.0);
+        fadeOut.setOnFinished(e -> {
+            da.setVisible(false);
+            da.setManaged(false);
+            a.setVisible(true);
+            a.setManaged(true);
+            a.setOpacity(0);
+            FadeTransition fadeIn = new FadeTransition(Duration.millis(200), a);
+            fadeIn.setFromValue(0.0);
+            fadeIn.setToValue(1.0);
+            fadeIn.play();
+        });
+        fadeOut.play();
+    }
+
+    private void mostraErroreLogin(String msg) {
+        lblErroreLogin.setStyle("-fx-text-fill: #e74c3c;");
+        lblErroreLogin.setText(msg);
+        lblErroreLogin.setVisible(true);
+    }
+
+    private void mostraErroreReg(String msg) {
+        lblErroreReg.setText(msg);
+        lblErroreReg.setVisible(true);
+    }
+}

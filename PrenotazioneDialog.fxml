@@ -1,0 +1,64 @@
+package com.flightbooking.controller;
+
+import com.flightbooking.model.Prenotazione;
+import com.flightbooking.model.Volo;
+import javafx.fxml.FXML;
+import javafx.scene.control.Label;
+
+/**
+ * Controller per il pannello di dettaglio di una prenotazione.
+ * Mostra tutti i dati del biglietto in formato "boarding pass".
+ */
+public class DettagliPrenotazioneController {
+
+    @FXML private Label lblCodice;
+    @FXML private Label lblStato;
+    @FXML private Label lblNumeroVolo;
+    @FXML private Label lblCompagnia;
+    @FXML private Label lblPartenza;
+    @FXML private Label lblArrivo;
+    @FXML private Label lblDataPartenza;
+    @FXML private Label lblDataArrivo;
+    @FXML private Label lblDurata;
+    @FXML private Label lblClasse;
+    @FXML private Label lblPasseggeri;
+    @FXML private Label lblPosto;
+    @FXML private Label lblGate;
+    @FXML private Label lblBagaglio;
+    @FXML private Label lblAssicurazione;
+    @FXML private Label lblPrezzo;
+    @FXML private Label lblDataPrenotazione;
+    @FXML private Label lblNote;
+
+    public void setPrenotazione(Prenotazione p) {
+        Volo v = p.getVolo();
+
+        lblCodice.setText(p.getCodicePrenotazione());
+        lblStato.setText(p.getStatoLabel());
+        lblClasse.setText(p.getClasseLabel());
+        lblPasseggeri.setText(p.getNumeroPasseggeri() + " passeggero/i");
+        lblBagaglio.setText(p.isBagaglioExtra() ? "✅ Incluso" : "❌ Non incluso");
+        lblAssicurazione.setText(p.isAssicurazione() ? "✅ Inclusa" : "❌ Non inclusa");
+        lblPrezzo.setText(String.format("€ %.2f", p.getPrezzoTotale()));
+        lblDataPrenotazione.setText(p.getDataPrenotazioneFormatted());
+        lblNote.setText(p.getNoteSpeciali() != null && !p.getNoteSpeciali().isBlank()
+            ? p.getNoteSpeciali() : "—");
+        lblPosto.setText(p.getNumeroPosto() != null ? p.getNumeroPosto() : "Da assegnare");
+
+        if (v != null) {
+            lblNumeroVolo.setText(v.getNumeroVolo());
+            lblCompagnia.setText(v.getCompagnia());
+            lblPartenza.setText(v.getCodicePartenza() + " — " + v.getAeroportoPartenza());
+            lblArrivo.setText(v.getCodiceArrivo() + " — " + v.getAeroportoArrivo());
+            lblDataPartenza.setText(v.getDataPartenzaFormatted());
+            lblDataArrivo.setText(v.getDataArrivoFormatted());
+            lblDurata.setText(v.getDurataVolo());
+            lblGate.setText(v.getGateImbarco() != null ? v.getGateImbarco() : "—");
+        }
+    }
+
+    @FXML
+    private void handleChiudi() {
+        lblCodice.getScene().getWindow().hide();
+    }
+}

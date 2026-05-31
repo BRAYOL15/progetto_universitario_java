@@ -1,0 +1,202 @@
+package com.flightbooking.dao;
+
+import com.flightbooking.model.Volo;
+import com.flightbooking.util.DatabaseManager;
+
+import java.sql.*;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * DAO per la gestione dei voli nel database.
+ * Supporta ricerca avanzata con filtri multipli.
+ */
+public class VoloDAO {
+
+    private final DatabaseManager db = DatabaseManager.getInstance();
+    private static final DateTimeFormatter FMT =
+        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    /**
+     * Cerca voli in base a partenza, arrivo e data.
+     * Supporta ricerca parziale (LIKE) sugli aeroporti.
+     */
+    public List<Volo> cerca(String partenza, String arrivo, String data) {
+        StringBuilder sql = new StringBuilder(
+            "SELECT * FROM voli WHERE stato != 'CANCELLATO' AND posti_disponibili > 0"
+        );
+        List<Object> params = new ArrayList<>();
+
+        if (partenza != null && !partenza.isBlank()) {
+            sql.append(" AND (UPPER(aeroporto_partenza) LIKE ? OR UPPER(codice_partenza) LIKE ?)");
+            String p = "%" + partenza.toUpperCase() + "%";
+            params.add(p); params.add(p);
+        }
+        if (arrivo != null && !arrivo.isBlank()) {
+            sql.append(" AND (UPPER(aeroporto_arrivo) LIKE ? OR UPPER(codice_arrivo) LIKE ?)");
+            String a = "%" + arrivo.toUpperCase() + "%";
+            params.add(a); params.add(a);
+        }
+        if (data != null && !data.isBlank()) {
+            sql.append(" AND DATE(data_ora_partenza) = ?");
+            params.add(data);
+        }
+        sql.append(" ORDER BY data_ora_partenza");
+
+        List<Volo> risultati = new ArrayList<>();
+        try (PreparedStatement ps = db.getConnection().prepareStatement(sql.toString())) {
+            for (int i = 0; i < params.size(); i++) ps.setObject(i + 1, params.get(i));
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) risultati.add(mapVolo(rs));
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return risultati;
+    }
+
+    /**
+     * Restituisce tutti i voli (per pannello admin).
+     */
+    public List<Volo> getTutti() {
+        List<Volo> lista = new ArrayList<>();
+        try (ResultSet rs = db.getConnection().createStatement()
+                .executeQuery("SELECT * FROM voli ORDER BY data_ora_partenza")) {
+            while (rs.next()) lista.add(mapVolo(rs));
+        } catch (SQLException e) { e.printStackTrace(); }
+        return lista;
+    }
+
+    public Optional<Volo> getById(int id) {
+        try (PreparedStatement ps = db.getConnection()
+                .prepareStatement("SELECT * FROM voli WHERE id = ?")) {
+            ps.setInt(1, id);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) return Optional.of(mapVolo(rs));
+        } catch (SQLException e) { e.printStackTrace(); }
+        return Optional.empty();
+    }
+
+    /**
+     * Inserisce un nuovo volo nel database.
+     */
+    public boolean inserisci(Volo volo) {
+        String sql = """
+            INSERT INTO voli (numero_volo, compagnia, aeroporto_partenza, codice_partenza,
+                aeroporto_arrivo, codice_arrivo, data_ora_partenza, data_ora_arrivo,
+                posti_totali, posti_disponibili, prezzo_economy, prezzo_business,
+                prezzo_first_class, stato, gate_imbarco)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """;
+        try (PreparedStatement ps = db.getConnection().prepareStatement(sql)) {
+            ps.setString(1, volo.getNumeroVolo());
+            ps.setString(2, volo.getCompagnia());
+            ps.setString(3, volo.getAeroportoPartenza());
+            ps.setString(4, volo.getCodicePartenza());
+            ps.setString(5, volo.getAeroportoArrivo());
+            ps.setString(6, volo.getCodiceArrivo());
+            ps.setString(7, volo.getDataOraPartenza().format(FMT));
+            ps.setString(8, volo.getDataOraArrivo().format(FMT));
+            ps.setInt(9, volo.getPostiTotali());
+            ps.setInt(10, volo.getPostiDisponibili());
+            ps.setDouble(11, volo.getPrezzoEconomy());
+            ps.setDouble(12, volo.getPrezzoBusiness());
+            ps.setDouble(13, volo.getPrezzoFirstClass());
+            ps.setString(14, volo.getStato().name());
+            ps.setString(15, volo.getGateImbarco());
+            ps.executeUpdate();
+            return true;
+        } catch (SQLException e) { e.printStackTrace(); return false; }
+    }
+
+    /**
+     * Aggiorna i dati di un volo esistente.
+     */
+    public boolean aggiorna(Volo volo) {
+        String sql = """
+            UPDATE voli SET numero_volo=?, compagnia=?, aeroporto_partenza=?,
+                codice_partenza=?, aeroporto_arrivo=?, codice_arrivo=?,
+                data_ora_partenza=?, data_ora_arrivo=?, posti_totali=?,
+                posti_disponibili=?, prezzo_economy=?, prezzo_business=?,
+                prezzo_first_class=?, stato=?, gate_imbarco=?
+            WHERE id=?
+        """;
+        try (PreparedStatement ps = db.getConnection().prepareStatement(sql)) {
+            ps.setString(1, volo.getNumeroVolo());
+            ps.setString(2, volo.getCompagnia());
+            ps.setString(3, volo.getAeroportoPartenza());
+            ps.setString(4, volo.getCodicePartenza());
+            ps.setString(5, volo.getAeroportoArrivo());
+            ps.setString(6, volo.getCodiceArrivo());
+            ps.setString(7, volo.getDataOraPartenza().format(FMT));
+            ps.setString(8, volo.getDataOraArrivo().format(FMT));
+            ps.setInt(9, volo.getPostiTotali());
+            ps.setInt(10, volo.getPostiDisponibili());
+            ps.setDouble(11, volo.getPrezzoEconomy());
+            ps.setDouble(12, volo.getPrezzoBusiness());
+            ps.setDouble(13, volo.getPrezzoFirstClass());
+            ps.setString(14, volo.getStato().name());
+            ps.setString(15, volo.getGateImbarco());
+            ps.setInt(16, volo.getId());
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) { e.printStackTrace(); return false; }
+    }
+
+    /**
+     * Riduce i posti disponibili di un volo dopo prenotazione.
+     */
+    public boolean riduciPosti(int idVolo, int quantita) {
+        try (PreparedStatement ps = db.getConnection().prepareStatement(
+                "UPDATE voli SET posti_disponibili = posti_disponibili - ? WHERE id = ? AND posti_disponibili >= ?")) {
+            ps.setInt(1, quantita);
+            ps.setInt(2, idVolo);
+            ps.setInt(3, quantita);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) { e.printStackTrace(); return false; }
+    }
+
+    /**
+     * Ripristina i posti disponibili dopo cancellazione prenotazione.
+     */
+    public boolean ripristinaPosti(int idVolo, int quantita) {
+        try (PreparedStatement ps = db.getConnection().prepareStatement(
+                "UPDATE voli SET posti_disponibili = posti_disponibili + ? WHERE id = ?")) {
+            ps.setInt(1, quantita);
+            ps.setInt(2, idVolo);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) { e.printStackTrace(); return false; }
+    }
+
+    public boolean elimina(int id) {
+        try (PreparedStatement ps = db.getConnection()
+                .prepareStatement("DELETE FROM voli WHERE id=?")) {
+            ps.setInt(1, id);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) { e.printStackTrace(); return false; }
+    }
+
+    private Volo mapVolo(ResultSet rs) throws SQLException {
+        Volo v = new Volo();
+        v.setId(rs.getInt("id"));
+        v.setNumeroVolo(rs.getString("numero_volo"));
+        v.setCompagnia(rs.getString("compagnia"));
+        v.setAeroportoPartenza(rs.getString("aeroporto_partenza"));
+        v.setCodicePartenza(rs.getString("codice_partenza"));
+        v.setAeroportoArrivo(rs.getString("aeroporto_arrivo"));
+        v.setCodiceArrivo(rs.getString("codice_arrivo"));
+        v.setDataOraPartenza(LocalDateTime.parse(
+            rs.getString("data_ora_partenza"), FMT));
+        v.setDataOraArrivo(LocalDateTime.parse(
+            rs.getString("data_ora_arrivo"), FMT));
+        v.setPostiTotali(rs.getInt("posti_totali"));
+        v.setPostiDisponibili(rs.getInt("posti_disponibili"));
+        v.setPrezzoEconomy(rs.getDouble("prezzo_economy"));
+        v.setPrezzoBusiness(rs.getDouble("prezzo_business"));
+        v.setPrezzoFirstClass(rs.getDouble("prezzo_first_class"));
+        v.setStato(Volo.Stato.valueOf(rs.getString("stato")));
+        v.setGateImbarco(rs.getString("gate_imbarco"));
+        return v;
+    }
+}

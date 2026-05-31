@@ -1,0 +1,117 @@
+package com.flightbooking.controller;
+
+import com.flightbooking.dao.VoloDAO;
+import com.flightbooking.model.Volo;
+import javafx.fxml.FXML;
+import javafx.fxml.Initializable;
+import javafx.scene.control.*;
+
+import java.net.URL;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ResourceBundle;
+
+/**
+ * Controller per il form di creazione/modifica volo (pannello admin).
+ */
+public class FormVoloController implements Initializable {
+
+    @FXML private TextField txtNumeroVolo;
+    @FXML private TextField txtCompagnia;
+    @FXML private TextField txtAeroportoPartenza;
+    @FXML private TextField txtCodicePartenza;
+    @FXML private TextField txtAeroportoArrivo;
+    @FXML private TextField txtCodiceArrivo;
+    @FXML private TextField txtDataPartenza;   // formato: yyyy-MM-dd HH:mm
+    @FXML private TextField txtDataArrivo;
+    @FXML private TextField txtPostiTotali;
+    @FXML private TextField txtPrezzoEconomy;
+    @FXML private TextField txtPrezzoBusiness;
+    @FXML private TextField txtPrezzoFirst;
+    @FXML private TextField txtGate;
+    @FXML private ComboBox<String> cmbStato;
+    @FXML private Label lblTitolo;
+    @FXML private Label lblErrore;
+
+    private Volo voloEsistente;
+    private Runnable onSalvato;
+    private final VoloDAO voloDAO = new VoloDAO();
+    private static final DateTimeFormatter FMT =
+        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+
+    @Override
+    public void initialize(URL location, ResourceBundle resources) {
+        cmbStato.getItems().addAll("PROGRAMMATO", "IN_RITARDO", "CANCELLATO");
+        cmbStato.setValue("PROGRAMMATO");
+        lblErrore.setVisible(false);
+    }
+
+    public void setVolo(Volo volo) {
+        this.voloEsistente = volo;
+        lblTitolo.setText("Modifica Volo");
+        txtNumeroVolo.setText(volo.getNumeroVolo());
+        txtCompagnia.setText(volo.getCompagnia());
+        txtAeroportoPartenza.setText(volo.getAeroportoPartenza());
+        txtCodicePartenza.setText(volo.getCodicePartenza());
+        txtAeroportoArrivo.setText(volo.getAeroportoArrivo());
+        txtCodiceArrivo.setText(volo.getCodiceArrivo());
+        txtDataPartenza.setText(volo.getDataOraPartenza().format(FMT));
+        txtDataArrivo.setText(volo.getDataOraArrivo().format(FMT));
+        txtPostiTotali.setText(String.valueOf(volo.getPostiTotali()));
+        txtPrezzoEconomy.setText(String.valueOf(volo.getPrezzoEconomy()));
+        txtPrezzoBusiness.setText(String.valueOf(volo.getPrezzoBusiness()));
+        txtPrezzoFirst.setText(String.valueOf(volo.getPrezzoFirstClass()));
+        txtGate.setText(volo.getGateImbarco() != null ? volo.getGateImbarco() : "");
+        cmbStato.setValue(volo.getStato().name());
+    }
+
+    public void setOnSalvato(Runnable r) { this.onSalvato = r; }
+
+    @FXML
+    private void handleSalva() {
+        try {
+            // Validazione
+            if (txtNumeroVolo.getText().isBlank() || txtCompagnia.getText().isBlank()) {
+                mostraErrore("Numero volo e compagnia sono obbligatori.");
+                return;
+            }
+
+            Volo v = voloEsistente != null ? voloEsistente : new Volo();
+            v.setNumeroVolo(txtNumeroVolo.getText().trim());
+            v.setCompagnia(txtCompagnia.getText().trim());
+            v.setAeroportoPartenza(txtAeroportoPartenza.getText().trim());
+            v.setCodicePartenza(txtCodicePartenza.getText().trim().toUpperCase());
+            v.setAeroportoArrivo(txtAeroportoArrivo.getText().trim());
+            v.setCodiceArrivo(txtCodiceArrivo.getText().trim().toUpperCase());
+            v.setDataOraPartenza(LocalDateTime.parse(txtDataPartenza.getText().trim(), FMT));
+            v.setDataOraArrivo(LocalDateTime.parse(txtDataArrivo.getText().trim(), FMT));
+            int posti = Integer.parseInt(txtPostiTotali.getText().trim());
+            v.setPostiTotali(posti);
+            if (voloEsistente == null) v.setPostiDisponibili(posti);
+            v.setPrezzoEconomy(Double.parseDouble(txtPrezzoEconomy.getText().trim()));
+            v.setPrezzoBusiness(Double.parseDouble(txtPrezzoBusiness.getText().trim()));
+            v.setPrezzoFirstClass(Double.parseDouble(txtPrezzoFirst.getText().trim()));
+            v.setStato(Volo.Stato.valueOf(cmbStato.getValue()));
+            v.setGateImbarco(txtGate.getText().trim());
+
+            boolean ok = (voloEsistente != null) ? voloDAO.aggiorna(v) : voloDAO.inserisci(v);
+            if (ok) {
+                if (onSalvato != null) onSalvato.run();
+            } else {
+                mostraErrore("Errore nel salvataggio. Numero volo già esistente?");
+            }
+        } catch (Exception e) {
+            mostraErrore("Dati non validi: " + e.getMessage());
+        }
+    }
+
+    @FXML
+    private void handleAnnulla() {
+        txtNumeroVolo.getScene().getWindow().hide();
+    }
+
+    private void mostraErrore(String msg) {
+        lblErrore.setText(msg);
+        lblErrore.setVisible(true);
+    }
+}

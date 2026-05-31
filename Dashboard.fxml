@@ -1,0 +1,319 @@
+package com.flightbooking.controller;
+
+import com.flightbooking.MainApp;
+import com.flightbooking.dao.PrenotazioneDAO;
+import com.flightbooking.dao.VoloDAO;
+import com.flightbooking.model.Prenotazione;
+import com.flightbooking.model.Volo;
+import com.flightbooking.util.SessionManager;
+import javafx.beans.property.SimpleStringProperty;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.fxml.FXML;
+import javafx.fxml.FXMLLoader;
+import javafx.fxml.Initializable;
+import javafx.scene.Scene;
+import javafx.scene.control.*;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.VBox;
+import javafx.stage.Modality;
+import javafx.stage.Stage;
+
+import java.io.IOException;
+import java.net.URL;
+import java.util.List;
+import java.util.Optional;
+import java.util.ResourceBundle;
+
+/**
+ * Controller principale della Dashboard utente.
+ * Gestisce ricerca voli, visualizzazione prenotazioni e navigazione.
+ */
+public class DashboardController implements Initializable {
+
+    // ─── Header ─────────────────────────────────────────────────────────────
+    @FXML private Label lblBenvenuto;
+    @FXML private Label lblNumeroPrenotazioni;
+
+    // ─── Ricerca Voli ────────────────────────────────────────────────────────
+    @FXML private TextField txtPartenza;
+    @FXML private TextField txtArrivo;
+    @FXML private DatePicker datePartenza;
+    @FXML private ComboBox<String> cmbPasseggeri;
+    @FXML private ComboBox<String> cmbClasse;
+    @FXML private VBox panelloRisultati;
+
+    // ─── Tabella Voli ────────────────────────────────────────────────────────
+    @FXML private TableView<Volo> tabellaVoli;
+    @FXML private TableColumn<Volo, String> colNumeroVolo;
+    @FXML private TableColumn<Volo, String> colCompagnia;
+    @FXML private TableColumn<Volo, String> colPartenza;
+    @FXML private TableColumn<Volo, String> colArrivo;
+    @FXML private TableColumn<Volo, String> colOrario;
+    @FXML private TableColumn<Volo, String> colDurata;
+    @FXML private TableColumn<Volo, String> colPrezzo;
+    @FXML private TableColumn<Volo, String> colPosti;
+    @FXML private TableColumn<Volo, String> colAzioni;
+
+    // ─── Tabella Prenotazioni ────────────────────────────────────────────────
+    @FXML private TableView<Prenotazione> tabellaPrenotazioni;
+    @FXML private TableColumn<Prenotazione, String> colCodice;
+    @FXML private TableColumn<Prenotazione, String> colVoloP;
+    @FXML private TableColumn<Prenotazione, String> colRottaP;
+    @FXML private TableColumn<Prenotazione, String> colDataP;
+    @FXML private TableColumn<Prenotazione, String> colClasseP;
+    @FXML private TableColumn<Prenotazione, String> colPrezzoP;
+    @FXML private TableColumn<Prenotazione, String> colStatoP;
+    @FXML private TableColumn<Prenotazione, String> colAzioniP;
+
+    // ─── Pannello navigazione ────────────────────────────────────────────────
+    @FXML private VBox sezioneRicerca;
+    @FXML private VBox sezioneMiePrenotazioni;
+    @FXML private VBox sezioneProfilo;
+
+    private final VoloDAO voloDAO = new VoloDAO();
+    private final PrenotazioneDAO prenotazioneDAO = new PrenotazioneDAO();
+    private ObservableList<Volo> listaVoli = FXCollections.observableArrayList();
+    private ObservableList<Prenotazione> listaPrenotazioni = FXCollections.observableArrayList();
+
+    @Override
+    public void initialize(URL location, ResourceBundle resources) {
+        var utente = SessionManager.getInstance().getUtenteCorrente();
+        lblBenvenuto.setText("Ciao, " + utente.getNome() + "! ✈");
+
+        inizializzaComboBox();
+        inizializzaTabellaVoli();
+        inizializzaTabellaPrenotazioni();
+        caricaPrenotazioniUtente();
+        mostraSezione("ricerca");
+    }
+
+    private void inizializzaComboBox() {
+        cmbPasseggeri.setItems(FXCollections.observableArrayList("1", "2", "3", "4", "5", "6"));
+        cmbPasseggeri.setValue("1");
+        cmbClasse.setItems(FXCollections.observableArrayList("Economy", "Business", "First Class"));
+        cmbClasse.setValue("Economy");
+    }
+
+    private void inizializzaTabellaVoli() {
+        colNumeroVolo.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getNumeroVolo()));
+        colCompagnia.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getCompagnia()));
+        colPartenza.setCellValueFactory(c -> new SimpleStringProperty(
+            c.getValue().getCodicePartenza() + "\n" + c.getValue().getAeroportoPartenza()));
+        colArrivo.setCellValueFactory(c -> new SimpleStringProperty(
+            c.getValue().getCodiceArrivo() + "\n" + c.getValue().getAeroportoArrivo()));
+        colOrario.setCellValueFactory(c -> new SimpleStringProperty(
+            c.getValue().getDataPartenzaFormatted()));
+        colDurata.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getDurataVolo()));
+        colPrezzo.setCellValueFactory(c -> {
+            Volo v = c.getValue();
+            String classe = cmbClasse.getValue();
+            double prezzo = switch (classe) {
+                case "Business"    -> v.getPrezzoBusiness();
+                case "First Class" -> v.getPrezzoFirstClass();
+                default            -> v.getPrezzoEconomy();
+            };
+            return new SimpleStringProperty(String.format("€ %.2f", prezzo));
+        });
+        colPosti.setCellValueFactory(c -> new SimpleStringProperty(
+            c.getValue().getPostiDisponibili() + " rimasti"));
+
+        // Colonna azioni
+        colAzioni.setCellFactory(col -> new TableCell<>() {
+            final Button btn = new Button("Prenota ✈");
+            {
+                btn.getStyleClass().add("btn-prenota");
+                btn.setOnAction(e -> {
+                    Volo volo = getTableView().getItems().get(getIndex());
+                    apriDialogPrenotazione(volo);
+                });
+            }
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                setGraphic(empty ? null : btn);
+            }
+        });
+
+        tabellaVoli.setItems(listaVoli);
+        tabellaVoli.setPlaceholder(new Label("Nessun volo trovato. Usa i filtri di ricerca."));
+    }
+
+    private void inizializzaTabellaPrenotazioni() {
+        colCodice.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getCodicePrenotazione()));
+        colVoloP.setCellValueFactory(c -> {
+            Volo v = c.getValue().getVolo();
+            return new SimpleStringProperty(v != null ? v.getNumeroVolo() : "--");
+        });
+        colRottaP.setCellValueFactory(c -> {
+            Volo v = c.getValue().getVolo();
+            return new SimpleStringProperty(v != null ?
+                v.getCodicePartenza() + " → " + v.getCodiceArrivo() : "--");
+        });
+        colDataP.setCellValueFactory(c -> {
+            Volo v = c.getValue().getVolo();
+            return new SimpleStringProperty(v != null ? v.getDataPartenzaFormatted() : "--");
+        });
+        colClasseP.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getClasseLabel()));
+        colPrezzoP.setCellValueFactory(c -> new SimpleStringProperty(
+            String.format("€ %.2f", c.getValue().getPrezzoTotale())));
+        colStatoP.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getStatoLabel()));
+
+        // Colonna azioni prenotazioni
+        colAzioniP.setCellFactory(col -> new TableCell<>() {
+            final Button btnCancella = new Button("Cancella");
+            final Button btnDettagli = new Button("Dettagli");
+            final HBox box = new HBox(5, btnDettagli, btnCancella);
+            {
+                btnCancella.getStyleClass().add("btn-cancella");
+                btnDettagli.getStyleClass().add("btn-dettagli");
+                btnCancella.setOnAction(e -> {
+                    Prenotazione p = getTableView().getItems().get(getIndex());
+                    cancellaPrenotazione(p);
+                });
+                btnDettagli.setOnAction(e -> {
+                    Prenotazione p = getTableView().getItems().get(getIndex());
+                    apriDettagliPrenotazione(p);
+                });
+            }
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty) { setGraphic(null); return; }
+                Prenotazione p = getTableView().getItems().get(getIndex());
+                btnCancella.setDisable(p.getStato() == Prenotazione.Stato.CANCELLATA);
+                setGraphic(box);
+            }
+        });
+
+        tabellaPrenotazioni.setItems(listaPrenotazioni);
+        tabellaPrenotazioni.setPlaceholder(new Label("Nessuna prenotazione trovata."));
+    }
+
+    @FXML
+    private void handleCercaVoli() {
+        String partenza = txtPartenza.getText().trim();
+        String arrivo = txtArrivo.getText().trim();
+        String data = datePartenza.getValue() != null ?
+            datePartenza.getValue().toString() : null;
+
+        List<Volo> risultati = voloDAO.cerca(partenza, arrivo, data);
+        listaVoli.setAll(risultati);
+        tabellaVoli.refresh();
+
+        if (risultati.isEmpty()) {
+            Alert a = new Alert(Alert.AlertType.INFORMATION);
+            a.setTitle("Nessun risultato");
+            a.setHeaderText("Nessun volo trovato");
+            a.setContentText("Prova a modificare i criteri di ricerca.");
+            a.showAndWait();
+        }
+    }
+
+    @FXML
+    private void handleMostraTuttiVoli() {
+        listaVoli.setAll(voloDAO.getTutti());
+    }
+
+    private void apriDialogPrenotazione(Volo volo) {
+        try {
+            FXMLLoader loader = new FXMLLoader(
+                getClass().getResource("/com/flightbooking/fxml/PrenotazioneDialog.fxml"));
+            Stage dialog = new Stage();
+            dialog.initModality(Modality.WINDOW_MODAL);
+            dialog.initOwner(MainApp.getPrimaryStage());
+            dialog.setTitle("Nuova Prenotazione — " + volo.getNumeroVolo());
+            Scene scene = new Scene(loader.load(), 600, 550);
+            scene.getStylesheets().add(
+                getClass().getResource("/com/flightbooking/css/style.css").toExternalForm());
+            dialog.setScene(scene);
+
+            PrenotazioneDialogController ctrl = loader.getController();
+            ctrl.setVolo(volo);
+            ctrl.setClasseSelezionata(cmbClasse.getValue());
+            ctrl.setNumeroPasseggeri(Integer.parseInt(cmbPasseggeri.getValue()));
+            ctrl.setOnPrenotazioneCompletata(() -> {
+                caricaPrenotazioniUtente();
+                dialog.close();
+            });
+            dialog.showAndWait();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void cancellaPrenotazione(Prenotazione p) {
+        if (p.getStato() == Prenotazione.Stato.CANCELLATA) return;
+
+        Alert conf = new Alert(Alert.AlertType.CONFIRMATION);
+        conf.setTitle("Conferma cancellazione");
+        conf.setHeaderText("Cancellare la prenotazione " + p.getCodicePrenotazione() + "?");
+        conf.setContentText("Questa operazione non può essere annullata.");
+        Optional<ButtonType> risposta = conf.showAndWait();
+
+        if (risposta.isPresent() && risposta.get() == ButtonType.OK) {
+            if (prenotazioneDAO.cancella(p.getId())) {
+                caricaPrenotazioniUtente();
+                mostraAlert(Alert.AlertType.INFORMATION, "Cancellata",
+                    "Prenotazione cancellata con successo.");
+            }
+        }
+    }
+
+    private void apriDettagliPrenotazione(Prenotazione p) {
+        try {
+            FXMLLoader loader = new FXMLLoader(
+                getClass().getResource("/com/flightbooking/fxml/DettagliPrenotazione.fxml"));
+            Stage dialog = new Stage();
+            dialog.initModality(Modality.WINDOW_MODAL);
+            dialog.initOwner(MainApp.getPrimaryStage());
+            dialog.setTitle("Dettagli — " + p.getCodicePrenotazione());
+            Scene scene = new Scene(loader.load(), 500, 500);
+            scene.getStylesheets().add(
+                getClass().getResource("/com/flightbooking/css/style.css").toExternalForm());
+            dialog.setScene(scene);
+            DettagliPrenotazioneController ctrl = loader.getController();
+            ctrl.setPrenotazione(p);
+            dialog.showAndWait();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void caricaPrenotazioniUtente() {
+        int idUtente = SessionManager.getInstance().getUtenteCorrente().getId();
+        List<Prenotazione> lista = prenotazioneDAO.getPerUtente(idUtente);
+        listaPrenotazioni.setAll(lista);
+        long attive = lista.stream()
+            .filter(p -> p.getStato() != Prenotazione.Stato.CANCELLATA)
+            .count();
+        lblNumeroPrenotazioni.setText(attive + " prenotazioni attive");
+    }
+
+    @FXML private void mostraRicerca()       { mostraSezione("ricerca"); }
+    @FXML private void mostraMiePrenotazioni(){ mostraSezione("prenotazioni"); }
+    @FXML private void mostraProfilo()        { mostraSezione("profilo"); }
+
+    private void mostraSezione(String sezione) {
+        sezioneRicerca.setVisible("ricerca".equals(sezione));
+        sezioneRicerca.setManaged("ricerca".equals(sezione));
+        sezioneMiePrenotazioni.setVisible("prenotazioni".equals(sezione));
+        sezioneMiePrenotazioni.setManaged("prenotazioni".equals(sezione));
+        sezioneProfilo.setVisible("profilo".equals(sezione));
+        sezioneProfilo.setManaged("profilo".equals(sezione));
+    }
+
+    @FXML
+    private void handleLogout() {
+        SessionManager.getInstance().logout();
+        MainApp.navigateTo("LoginView.fxml", "Accesso");
+    }
+
+    private void mostraAlert(Alert.AlertType tipo, String titolo, String msg) {
+        Alert a = new Alert(tipo);
+        a.setTitle(titolo);
+        a.setHeaderText(null);
+        a.setContentText(msg);
+        a.showAndWait();
+    }
+}
